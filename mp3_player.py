@@ -101,6 +101,16 @@ class MP3Player:
             self.index = (self.index - 1) % len(self.tracks)
             self._start_current()
 
+    def add_and_play(self, path):
+        """Add a song (e.g. one just downloaded from Drive) to the playlist and play it."""
+        with self.lock:
+            if path in self.tracks:
+                self.index = self.tracks.index(path)
+            else:
+                self.tracks.append(path)
+                self.index = len(self.tracks) - 1
+            self._start_current()
+
     def set_volume(self, percent):
         percent = max(0, min(100, percent))
         pygame.mixer.music.set_volume(percent / 100)
@@ -128,29 +138,16 @@ class MP3Player:
         pygame.mixer.quit()
 
 
-def main():
-    if len(sys.argv) >= 2:
-        paths = sys.argv[1:]
-    else:
-        # No arguments: use a "songs" folder next to this script.
-        songs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "songs")
-        if not os.path.isdir(songs_dir):
-            os.makedirs(songs_dir)
-            print(f"Created folder: {songs_dir}")
-            print("Put your .mp3 files in it, then run the player again.")
-            sys.exit(0)
-        paths = [songs_dir]
+def run_controls(player, cloud_handler=None):
+    """The command prompt (play, pause, next, volume, ...).
 
-    try:
-        tracks = build_playlist(paths)
-        player = MP3Player(tracks)
-    except (FileNotFoundError, pygame.error) as e:
-        print(f"Error: {e}")
-        sys.exit(1)
-
-    print(f"Loaded {len(tracks)} track(s).")
-    print("Commands: play | pause | resume | stop | next | prev | list | "
-          "vol <0-100> | loop [on|off] | quit")
+    Shared by local mode (mp3_player.py) and cloud mode (cloudpod.py).
+    If cloud_handler is given, a 'cloud' command is added that calls it.
+    """
+    commands = "play | pause | resume | stop | next | prev | list | vol <0-100> | loop [on|off]"
+    if cloud_handler:
+        commands += " | cloud"
+    print(f"Commands: {commands} | quit")
 
     while True:
         try:
@@ -195,11 +192,36 @@ def main():
             if player.state != "stopped":
                 msg += " (applies the next time a song starts)"
             print(msg)
+        elif cmd == "cloud" and cloud_handler:
+            cloud_handler()  # pick another song from Google Drive
         elif cmd in ("quit", "exit", "q"):
             break
         else:
             print("Unknown command.")
 
+
+def main():
+    if len(sys.argv) >= 2:
+        paths = sys.argv[1:]
+    else:
+        # No arguments: use a "songs" folder next to this script.
+        songs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "songs")
+        if not os.path.isdir(songs_dir):
+            os.makedirs(songs_dir)
+            print(f"Created folder: {songs_dir}")
+            print("Put your .mp3 files in it, then run the player again.")
+            sys.exit(0)
+        paths = [songs_dir]
+
+    try:
+        tracks = build_playlist(paths)
+        player = MP3Player(tracks)
+    except (FileNotFoundError, pygame.error) as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+    print(f"Loaded {len(tracks)} track(s).")
+    run_controls(player)
     player.close()
 
 
